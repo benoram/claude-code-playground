@@ -1,0 +1,38 @@
+{
+	"name": "Ubuntu",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+	"features": {
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"installZsh": true,
+			"installOhMyZsh": true,
+			"configureZshAsDefaultShell": true,
+			"username": "vscode",
+			"userUid": "automatic",
+			"userGid": "automatic",
+			"upgradePackages": true
+		},
+		"ghcr.io/devcontainers/features/git:1": {
+			"ppa": true,
+			"version": "latest"
+		},
+		"ghcr.io/meaningful-ooo/devcontainer-features/homebrew:2": {},
+		"ghcr.io/devcontainers/features/aws-cli:1": {},
+		"ghcr.io/devcontainers/features/copilot-cli:1": {},
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/devcontainers/features/terraform:1": {},
+		"ghcr.io/devcontainers/features/dotnet:2": {
+			"version": "10.0"
+		},
+		"ghcr.io/dhoeric/features/k9s:1": {}
+	},
+	"postCreateCommand": "bash .devcontainer/post-create.sh",
+	"dotfilesRepository": "${localEnv:DOTFILES_REPOSITORY}",
+	"dotfilesInstallCommand": "${localEnv:DOTFILES_INSTALL_COMMAND}",
+	"dotfilesTargetPath": "~/dotfiles",
+	"customizations": {
+		"vscode": {
+			"extensions": []
+		}
+	},
+	"remoteUser": "vscode"
+}
