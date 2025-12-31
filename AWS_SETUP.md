@@ -140,12 +140,7 @@ To use the IAM Roles Anywhere credentials directly on your host machine (same as
    ```ini
    [profile devcontainer]
    region = us-east-1
-   credential_process = aws_signing_helper credential-process \
-     --certificate /path/to/aws-infrastructure/certificates/end-entity-cert.pem \
-     --private-key /path/to/aws-infrastructure/certificates/end-entity-key.pem \
-     --trust-anchor-arn arn:aws:rolesanywhere:REGION:ACCOUNT:trust-anchor/ID \
-     --profile-arn arn:aws:rolesanywhere:REGION:ACCOUNT:profile/ID \
-     --role-arn arn:aws:iam::ACCOUNT:role/devcontainer-claude-code-playground
+   credential_process = aws_signing_helper credential-process --certificate /path/to/aws-infrastructure/certificates/end-entity-cert.pem --private-key /path/to/aws-infrastructure/certificates/end-entity-key.pem --trust-anchor-arn arn:aws:rolesanywhere:REGION:ACCOUNT:trust-anchor/ID --profile-arn arn:aws:rolesanywhere:REGION:ACCOUNT:profile/ID --role-arn arn:aws:iam::ACCOUNT:role/devcontainer-claude-code-playground
    ```
 
 3. Use the profile:
