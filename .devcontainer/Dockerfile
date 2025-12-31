@@ -15,13 +15,10 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 
 # Download and install AWS IAM Roles Anywhere credential helper
 ARG TARGETARCH
-RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") \
-    && curl -L -o /tmp/aws_signing_helper.zip \
-        "https://rolesanywhere.amazonaws.com/releases/1.4.0/X86_64/Linux/aws_signing_helper.zip" \
-    && unzip /tmp/aws_signing_helper.zip -d /tmp \
-    && mv /tmp/aws_signing_helper /usr/local/bin/ \
-    && chmod +x /usr/local/bin/aws_signing_helper \
-    && rm /tmp/aws_signing_helper.zip
+RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "Aarch64" || echo "X86_64") \
+    && curl -L -o /usr/local/bin/aws_signing_helper \
+        "https://rolesanywhere.amazonaws.com/releases/1.7.2/${ARCH}/Linux/Amzn2023/aws_signing_helper" \
+    && chmod +x /usr/local/bin/aws_signing_helper
 
 # Create directories for credentials
 RUN mkdir -p /home/vscode/.aws \
