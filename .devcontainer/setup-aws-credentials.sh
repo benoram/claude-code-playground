@@ -41,8 +41,17 @@ setup_roles_anywhere() {
     # Create certificate and key files
     mkdir -p /home/vscode/.aws/roles-anywhere
 
-    echo "${ROLES_ANYWHERE_CERTIFICATE}" | base64 -d > /home/vscode/.aws/roles-anywhere/certificate.pem
-    echo "${ROLES_ANYWHERE_PRIVATE_KEY}" | base64 -d > /home/vscode/.aws/roles-anywhere/private-key.pem
+    if ! base64 -d <<< "${ROLES_ANYWHERE_CERTIFICATE}" > /home/vscode/.aws/roles-anywhere/certificate.pem; then
+        echo "ERROR: Failed to decode ROLES_ANYWHERE_CERTIFICATE (invalid base64 data)." >&2
+        rm -f /home/vscode/.aws/roles-anywhere/certificate.pem
+        return 1
+    fi
+
+    if ! base64 -d <<< "${ROLES_ANYWHERE_PRIVATE_KEY}" > /home/vscode/.aws/roles-anywhere/private-key.pem; then
+        echo "ERROR: Failed to decode ROLES_ANYWHERE_PRIVATE_KEY (invalid base64 data)." >&2
+        rm -f /home/vscode/.aws/roles-anywhere/private-key.pem
+        return 1
+    fi
     chmod 600 /home/vscode/.aws/roles-anywhere/private-key.pem
     chmod 644 /home/vscode/.aws/roles-anywhere/certificate.pem
 
