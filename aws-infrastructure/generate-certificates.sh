@@ -96,18 +96,22 @@ echo -e "${YELLOW}=== Next Steps ===${NC}"
 echo ""
 echo "1. Deploy the CloudFormation stack with the CA certificate:"
 echo ""
-echo "   aws cloudformation deploy \\"
-echo "     --template-file ${SCRIPT_DIR}/roles-anywhere-infrastructure.yml \\"
-echo "     --stack-name devcontainer-claude-code-playground \\"
-echo "     --capabilities CAPABILITY_NAMED_IAM \\"
-echo "     --parameter-overrides \\"
-echo "       CACertificateBody=\"\$(cat ${CERTS_DIR}/ca-cert.pem)\""
+cat <<EOF
+   aws cloudformation deploy \
+     --template-file ${SCRIPT_DIR}/roles-anywhere-infrastructure.yml \
+     --stack-name devcontainer-claude-code-playground \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides \
+       CACertificateBody="\$(cat ${CERTS_DIR}/ca-cert.pem)"
+EOF
 echo ""
 echo "2. Get the output values:"
 echo ""
-echo "   aws cloudformation describe-stacks \\"
-echo "     --stack-name devcontainer-claude-code-playground \\"
-echo "     --query 'Stacks[0].Outputs'"
+cat <<EOF
+   aws cloudformation describe-stacks \
+     --stack-name devcontainer-claude-code-playground \
+     --query 'Stacks[0].Outputs'
+EOF
 echo ""
 echo "3. Add these as GitHub Codespaces secrets:"
 echo ""
