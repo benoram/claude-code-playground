@@ -80,11 +80,15 @@ EOF
 
     echo "IAM Roles Anywhere credentials configured successfully!"
     echo "Testing AWS access..."
-    if aws sts get-caller-identity 2>/dev/null; then
+    # Disable exit-on-error for credential validation to avoid unexpected script termination
+    set +e
+    aws sts get-caller-identity 2>/dev/null
+    if [ $? -eq 0 ]; then
         echo "AWS credentials are working!"
     else
         echo "WARNING: Could not verify AWS credentials. Check your configuration."
     fi
+    set -e
 }
 
 # Function to use host AWS credentials (local development)
@@ -110,12 +114,16 @@ setup_host_credentials() {
 
         echo "Host AWS credentials configured!"
         echo "Testing AWS access..."
-        if aws sts get-caller-identity 2>/dev/null; then
+        # Disable exit-on-error for credential validation to avoid unexpected script termination
+        set +e
+        aws sts get-caller-identity 2>/dev/null
+        if [ $? -eq 0 ]; then
             echo "AWS credentials are working!"
         else
             echo "WARNING: Could not verify AWS credentials."
             echo "Make sure you're authenticated on your host machine (e.g., 'aws sso login')"
         fi
+        set -e
     else
         echo "No host AWS credentials found at ~/.aws"
         echo "To use AWS in local development, either:"
