@@ -26,7 +26,11 @@ Parameters:
     Default: 3600
     MinValue: 900
     MaxValue: 43200
-    Description: Duration of assumed role sessions (15 min to 12 hours)
+    Description: |
+      Duration of assumed role sessions in seconds (15 min to 12 hours).
+      Default is 3600 (1 hour) for security. The IAM role's MaxSessionDuration
+      is set to 43200 (12 hours) to allow flexibility - you can override this
+      parameter to use longer sessions if needed.
 
 Resources:
   #############################################################################
@@ -59,6 +63,8 @@ Resources:
     Properties:
       RoleName: devcontainer-claude-code-playground
       Description: IAM role for Claude Code Playground devcontainer access via IAM Roles Anywhere
+      # MaxSessionDuration allows sessions up to 12 hours. The actual session
+      # duration is controlled by the SessionDurationSeconds parameter (default 1 hour).
       MaxSessionDuration: 43200  # 12 hours max
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
