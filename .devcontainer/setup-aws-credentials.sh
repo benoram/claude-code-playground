@@ -105,7 +105,12 @@ setup_host_credentials() {
         # Use the local profile if specified
         if [ -n "${AWS_PROFILE_LOCAL}" ]; then
             export AWS_PROFILE="${AWS_PROFILE_LOCAL}"
+            # Persist AWS_PROFILE for bash shells
             echo "export AWS_PROFILE=${AWS_PROFILE_LOCAL}" >> /home/vscode/.bashrc
+            # Also persist for login shells via .profile (more shell-agnostic than .bashrc)
+            echo "export AWS_PROFILE=${AWS_PROFILE_LOCAL}" >> /home/vscode/.profile
+            echo "AWS_PROFILE set to '${AWS_PROFILE_LOCAL}' for this session and persisted to ~/.bashrc and ~/.profile."
+            echo "Note: If you use a non-bash shell, ensure your shell loads ~/.profile or configure AWS_PROFILE in your shell's RC file."
         fi
 
         echo "Host AWS credentials configured!"
