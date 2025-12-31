@@ -10,11 +10,13 @@
     "ghcr.io/devcontainers/features/aws-cli:1": {},
     "ghcr.io/devcontainers/features/go:1": {}
   },
+  // Create ~/.aws directory on host if it doesn't exist (required for bind mount)
+  "initializeCommand": "mkdir -p ~/.aws",
   "postStartCommand": ".devcontainer/setup-aws-credentials.sh",
   "remoteUser": "vscode",
   "mounts": [
     // Mount host AWS credentials for local development (read-only)
-    // This is ignored in Codespaces where host path doesn't exist
+    // initializeCommand ensures ~/.aws exists; in Codespaces this will be empty
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/home/vscode/.aws-host,type=bind,readonly"
   ],
   "containerEnv": {
