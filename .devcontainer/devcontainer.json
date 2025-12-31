@@ -1,0 +1,33 @@
+{
+  "name": "Claude Code Playground",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "VARIANT": "jammy"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/go:1": {}
+  },
+  "postStartCommand": ".devcontainer/setup-aws-credentials.sh",
+  "remoteUser": "vscode",
+  "mounts": [
+    // Mount host AWS credentials for local development (read-only)
+    // This is ignored in Codespaces where host path doesn't exist
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/home/vscode/.aws-host,type=bind,readonly"
+  ],
+  "containerEnv": {
+    // Pass through local AWS profile if set
+    "AWS_PROFILE_LOCAL": "${localEnv:AWS_PROFILE}",
+    "AWS_REGION": "${localEnv:AWS_REGION}",
+    "AWS_DEFAULT_REGION": "${localEnv:AWS_DEFAULT_REGION}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "amazonwebservices.aws-toolkit-vscode"
+      ]
+    }
+  }
+}

@@ -536,3 +536,15 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,linux,terraform,visualstudiocode,dotnetcore,aspnetcore
+
+### IAM Roles Anywhere Certificates ###
+# Never commit private keys or certificates
+aws-infrastructure/certificates/
+*.pem
+*.pem.b64
+*.csr
+*.srl
+*.cnf
+
+# Except keep the certificate generation script
+!aws-infrastructure/generate-certificates.sh
