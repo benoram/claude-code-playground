@@ -10,6 +10,24 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         jq \
         curl \
         unzip \
+        gnupg \
+        software-properties-common \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Terraform from HashiCorp repository
+RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+        > /etc/apt/sources.list.d/hashicorp.list \
+    && apt-get update \
+    && apt-get install -y terraform \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js LTS and Claude Code
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @anthropic-ai/claude-code \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,6 +38,10 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "Aarch64" || echo "X86_64") \
         "https://rolesanywhere.amazonaws.com/releases/1.7.2/${ARCH}/Linux/Amzn2023/aws_signing_helper" \
     && chmod +x /usr/local/bin/aws_signing_helper
 
-# Create directories for credentials
-RUN mkdir -p /home/vscode/.aws \
-    && chown -R vscode:vscode /home/vscode/.aws
+# Create directories for credentials and Claude Code config
+RUN mkdir -p /home/vscode/.aws /home/vscode/.claude \
+    && chown -R vscode:vscode /home/vscode/.aws /home/vscode/.claude
+
+# Add clauded alias for bash and zsh
+RUN echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode/.bashrc \
+    && echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode/.zshrc

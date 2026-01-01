@@ -490,6 +490,13 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Terraform lock files (S3 native locking)
+*.tflock
+*.tflock.info
+
+# Generated backend configuration (contains account-specific values)
+terraform/backend.tf
+
 ### VisualStudioCode ###
 .vscode/*
 !.vscode/settings.json
@@ -540,11 +547,11 @@ $RECYCLE.BIN/
 ### IAM Roles Anywhere Certificates ###
 # Never commit private keys or certificates
 aws-infrastructure/certificates/
-*.pem
-*.pem.b64
-*.csr
-*.srl
-*.cnf
 
 # Except keep the certificate generation script
 !aws-infrastructure/generate-certificates.sh
+
+### Local Environment Files ###
+# Local Roles Anywhere configuration (contains secrets)
+.env.local
+.env.*.local

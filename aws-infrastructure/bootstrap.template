@@ -1,0 +1,624 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Bootstrap infrastructure for Claude Code Playground.
+  Includes Terraform state storage (S3 with native locking), IAM Roles Anywhere,
+  and SSM Parameter Store for configuration values.
+
+  First deployment must be done manually with admin credentials:
+    aws cloudformation deploy --template-file bootstrap.template \
+      --stack-name claude-code-bootstrap \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides CACertificateBody="$(cat certificates/ca-cert.pem)"
+
+  Subsequent deployments can use scripts/deploy-bootstrap.sh
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: claude-code-playground
+    Description: Project name used for resource naming and tagging
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name for resource tagging
+
+  CACertificateBody:
+    Type: String
+    Description: PEM-encoded CA certificate for IAM Roles Anywhere Trust Anchor
+    NoEcho: true
+
+  SessionDuration:
+    Type: Number
+    Default: 3600
+    MinValue: 900
+    MaxValue: 43200
+    Description: Session duration in seconds for Roles Anywhere credentials (15 min to 12 hours)
+
+  TerraformStateBucketName:
+    Type: String
+    Default: ''
+    Description: Optional custom S3 bucket name for Terraform state. If empty, auto-generated.
+
+Conditions:
+  UseCustomBucketName: !Not [!Equals [!Ref TerraformStateBucketName, '']]
+
+Resources:
+  #############################################################################
+  # Terraform State Storage
+  #############################################################################
+
+  TerraformStateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If
+        - UseCustomBucketName
+        - !Ref TerraformStateBucketName
+        - !Sub '${ProjectName}-terraform-state-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref TerraformStateKMSKey
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      ObjectLockEnabled: false
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Purpose
+          Value: TerraformState
+
+  TerraformStateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TerraformStateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnforceTLS
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt TerraformStateBucket.Arn
+              - !Sub '${TerraformStateBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+          - Sid: EnforceEncryption
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: !Sub '${TerraformStateBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                's3:x-amz-server-side-encryption': 'aws:kms'
+
+  TerraformStateKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for encrypting Terraform state
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowIAMPolicies
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action:
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:DescribeKey'
+              - 'kms:CreateGrant'
+              - 'kms:ListGrants'
+              - 'kms:RevokeGrant'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:CallerAccount': !Ref 'AWS::AccountId'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  TerraformStateKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-terraform-state'
+      TargetKeyId: !Ref TerraformStateKMSKey
+
+  #############################################################################
+  # IAM Roles Anywhere
+  #############################################################################
+
+  RolesAnywhereTrustAnchor:
+    Type: AWS::RolesAnywhere::TrustAnchor
+    Properties:
+      Name: !Sub '${ProjectName}-trust-anchor'
+      Enabled: true
+      Source:
+        SourceData:
+          X509CertificateData: !Ref CACertificateBody
+        SourceType: CERTIFICATE_BUNDLE
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  DevcontainerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-devcontainer-role'
+      Description: IAM role for devcontainer access via Roles Anywhere
+      MaxSessionDuration: 43200
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: rolesanywhere.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+              - 'sts:TagSession'
+              - 'sts:SetSourceIdentity'
+            Condition:
+              ArnEquals:
+                'aws:SourceArn': !GetAtt RolesAnywhereTrustAnchor.TrustAnchorArn
+      Policies:
+        - PolicyName: TerraformStateAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: S3StateAccess
+                Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                  - 's3:GetBucketVersioning'
+                  - 's3:GetBucketLocation'
+                Resource:
+                  - !GetAtt TerraformStateBucket.Arn
+                  - !Sub '${TerraformStateBucket.Arn}/*'
+        - PolicyName: SSMParameterStoreAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadParameters
+                Effect: Allow
+                Action:
+                  - 'ssm:GetParameter'
+                  - 'ssm:GetParameters'
+                  - 'ssm:GetParametersByPath'
+                  - 'ssm:PutParameter'
+                  - 'ssm:DeleteParameter'
+                  - 'ssm:AddTagsToResource'
+                  - 'ssm:RemoveTagsFromResource'
+                  - 'ssm:ListTagsForResource'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/*'
+              - Sid: DescribeParameters
+                Effect: Allow
+                Action:
+                  - 'ssm:DescribeParameters'
+                Resource: '*'
+        - PolicyName: CloudFormationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: StackOperations
+                Effect: Allow
+                Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:DescribeStackEvents'
+                  - 'cloudformation:DescribeStackResources'
+                  - 'cloudformation:GetTemplate'
+                  - 'cloudformation:ValidateTemplate'
+                  - 'cloudformation:ListStacks'
+                  - 'cloudformation:CreateChangeSet'
+                  - 'cloudformation:DescribeChangeSet'
+                  - 'cloudformation:ExecuteChangeSet'
+                  - 'cloudformation:DeleteChangeSet'
+                  - 'cloudformation:GetStackPolicy'
+                  - 'cloudformation:SetStackPolicy'
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-*'
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/claude-code-bootstrap/*'
+              - Sid: ValidateAnyTemplate
+                Effect: Allow
+                Action:
+                  - 'cloudformation:ValidateTemplate'
+                Resource: '*'
+        - PolicyName: IAMRolesAnywhereManagement
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: RolesAnywhereRead
+                Effect: Allow
+                Action:
+                  - 'rolesanywhere:Get*'
+                  - 'rolesanywhere:List*'
+                Resource: '*'
+              - Sid: RolesAnywhereManage
+                Effect: Allow
+                Action:
+                  - 'rolesanywhere:UpdateTrustAnchor'
+                  - 'rolesanywhere:UpdateProfile'
+                  - 'rolesanywhere:EnableTrustAnchor'
+                  - 'rolesanywhere:DisableTrustAnchor'
+                  - 'rolesanywhere:EnableProfile'
+                  - 'rolesanywhere:DisableProfile'
+                  - 'rolesanywhere:TagResource'
+                  - 'rolesanywhere:UntagResource'
+                Resource:
+                  - !Sub 'arn:aws:rolesanywhere:${AWS::Region}:${AWS::AccountId}:trust-anchor/*'
+                  - !Sub 'arn:aws:rolesanywhere:${AWS::Region}:${AWS::AccountId}:profile/*'
+        - PolicyName: IAMPassRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: PassRoleForCloudFormation
+                Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-*'
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService':
+                      - 'cloudformation.amazonaws.com'
+                      - 'rolesanywhere.amazonaws.com'
+        - PolicyName: IAMRoleManagement
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ManageProjectRoles
+                Effect: Allow
+                Action:
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:UpdateRole'
+                  - 'iam:UpdateAssumeRolePolicy'
+                  - 'iam:GetRole'
+                  - 'iam:GetRolePolicy'
+                  - 'iam:ListRolePolicies'
+                  - 'iam:ListAttachedRolePolicies'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:TagRole'
+                  - 'iam:UntagRole'
+                  - 'iam:ListRoleTags'
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-*'
+              - Sid: ListRoles
+                Effect: Allow
+                Action:
+                  - 'iam:ListRoles'
+                Resource: '*'
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: KMSUsage
+                Effect: Allow
+                Action:
+                  - 'kms:Encrypt'
+                  - 'kms:Decrypt'
+                  - 'kms:ReEncrypt*'
+                  - 'kms:GenerateDataKey*'
+                  - 'kms:DescribeKey'
+                  - 'kms:CreateGrant'
+                  - 'kms:ListGrants'
+                Resource: !GetAtt TerraformStateKMSKey.Arn
+              - Sid: KMSManagement
+                Effect: Allow
+                Action:
+                  - 'kms:CreateKey'
+                  - 'kms:ListKeys'
+                  - 'kms:ListAliases'
+                  - 'kms:DescribeKey'
+                  - 'kms:GetKeyPolicy'
+                  - 'kms:GetKeyRotationStatus'
+                  - 'kms:TagResource'
+                  - 'kms:UntagResource'
+                  - 'kms:ListResourceTags'
+                  - 'kms:CreateAlias'
+                  - 'kms:DeleteAlias'
+                  - 'kms:UpdateAlias'
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    'kms:RequestAlias': !Sub 'alias/${ProjectName}-*'
+        - PolicyName: S3Management
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: S3BucketManagement
+                Effect: Allow
+                Action:
+                  - 's3:CreateBucket'
+                  - 's3:DeleteBucket'
+                  - 's3:PutBucketVersioning'
+                  - 's3:PutBucketEncryption'
+                  - 's3:PutBucketPolicy'
+                  - 's3:DeleteBucketPolicy'
+                  - 's3:GetBucketPolicy'
+                  - 's3:PutBucketPublicAccessBlock'
+                  - 's3:GetBucketPublicAccessBlock'
+                  - 's3:PutLifecycleConfiguration'
+                  - 's3:GetLifecycleConfiguration'
+                  - 's3:PutBucketTagging'
+                  - 's3:GetBucketTagging'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ProjectName}-*'
+              - Sid: ListBuckets
+                Effect: Allow
+                Action:
+                  - 's3:ListAllMyBuckets'
+                Resource: '*'
+        - PolicyName: STSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: GetCallerIdentity
+                Effect: Allow
+                Action:
+                  - 'sts:GetCallerIdentity'
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RolesAnywhereProfile:
+    Type: AWS::RolesAnywhere::Profile
+    Properties:
+      Name: !Sub '${ProjectName}-profile'
+      Enabled: true
+      DurationSeconds: !Ref SessionDuration
+      RoleArns:
+        - !GetAtt DevcontainerRole.Arn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  #############################################################################
+  # SSM Parameter Store - Configuration Values
+  #############################################################################
+
+  SSMTerraformStateBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/terraform/state-bucket'
+      Type: String
+      Value: !Ref TerraformStateBucket
+      Description: S3 bucket name for Terraform state
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMTerraformStateRegion:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/terraform/state-region'
+      Type: String
+      Value: !Ref 'AWS::Region'
+      Description: AWS region for Terraform state bucket
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMTerraformStateKMSKeyArn:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/terraform/state-kms-key-arn'
+      Type: String
+      Value: !GetAtt TerraformStateKMSKey.Arn
+      Description: KMS key ARN for Terraform state encryption
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMRolesAnywhereTrustAnchorArn:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/roles-anywhere/trust-anchor-arn'
+      Type: String
+      Value: !GetAtt RolesAnywhereTrustAnchor.TrustAnchorArn
+      Description: IAM Roles Anywhere Trust Anchor ARN
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMRolesAnywhereProfileArn:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/roles-anywhere/profile-arn'
+      Type: String
+      Value: !GetAtt RolesAnywhereProfile.ProfileArn
+      Description: IAM Roles Anywhere Profile ARN
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMRolesAnywhereRoleArn:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/roles-anywhere/role-arn'
+      Type: String
+      Value: !GetAtt DevcontainerRole.Arn
+      Description: IAM Role ARN for Roles Anywhere
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMProjectName:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/config/project-name'
+      Type: String
+      Value: !Ref ProjectName
+      Description: Project name for resource identification
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMEnvironment:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/config/environment'
+      Type: String
+      Value: !Ref Environment
+      Description: Environment name (dev/staging/prod)
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMAWSRegion:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/config/aws-region'
+      Type: String
+      Value: !Ref 'AWS::Region'
+      Description: Primary AWS region for resources
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SSMAWSAccountId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${ProjectName}/config/aws-account-id'
+      Type: String
+      Value: !Ref 'AWS::AccountId'
+      Description: AWS Account ID
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+Outputs:
+  TerraformStateBucketName:
+    Description: S3 bucket name for Terraform state
+    Value: !Ref TerraformStateBucket
+    Export:
+      Name: !Sub '${ProjectName}-terraform-state-bucket'
+
+  TerraformStateBucketArn:
+    Description: S3 bucket ARN for Terraform state
+    Value: !GetAtt TerraformStateBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-terraform-state-bucket-arn'
+
+  TerraformStateKMSKeyArn:
+    Description: KMS key ARN for Terraform state encryption
+    Value: !GetAtt TerraformStateKMSKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-terraform-state-kms-key-arn'
+
+  TerraformStateKMSKeyAlias:
+    Description: KMS key alias for Terraform state encryption
+    Value: !Ref TerraformStateKMSKeyAlias
+    Export:
+      Name: !Sub '${ProjectName}-terraform-state-kms-key-alias'
+
+  RolesAnywhereTrustAnchorArn:
+    Description: IAM Roles Anywhere Trust Anchor ARN
+    Value: !GetAtt RolesAnywhereTrustAnchor.TrustAnchorArn
+    Export:
+      Name: !Sub '${ProjectName}-trust-anchor-arn'
+
+  RolesAnywhereProfileArn:
+    Description: IAM Roles Anywhere Profile ARN
+    Value: !GetAtt RolesAnywhereProfile.ProfileArn
+    Export:
+      Name: !Sub '${ProjectName}-profile-arn'
+
+  DevcontainerRoleArn:
+    Description: IAM Role ARN for devcontainer
+    Value: !GetAtt DevcontainerRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-devcontainer-role-arn'
+
+  SSMParameterPrefix:
+    Description: SSM Parameter Store prefix for this project
+    Value: !Sub '/${ProjectName}/'
+    Export:
+      Name: !Sub '${ProjectName}-ssm-prefix'
+
+  TerraformBackendConfig:
+    Description: Terraform backend configuration snippet
+    Value: !Sub |
+      terraform {
+        backend "s3" {
+          bucket       = "${TerraformStateBucket}"
+          key          = "terraform.tfstate"
+          region       = "${AWS::Region}"
+          encrypt      = true
+          kms_key_id   = "${TerraformStateKMSKey.Arn}"
+          use_lockfile = true
+        }
+      }
