@@ -274,6 +274,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - 'cloudformation:ValidateTemplate'
+                  - 'cloudformation:GetTemplateSummary'
                 Resource: '*'
         - PolicyName: IAMRolesAnywhereManagement
           PolicyDocument:
@@ -559,6 +560,14 @@ Resources:
         Project: !Ref ProjectName
         Environment: !Ref Environment
         ManagedBy: CloudFormation
+
+  # Note: Tailscale auth key is stored as a SecureString parameter outside CloudFormation
+  # (CloudFormation doesn't support creating SecureString parameters)
+  # Create it manually with:
+  #   aws ssm put-parameter \
+  #     --name '/${ProjectName}/config/tailscale-auth-key' \
+  #     --type SecureString \
+  #     --value 'tskey-auth-xxxxx'
 
 Outputs:
   TerraformStateBucketName:

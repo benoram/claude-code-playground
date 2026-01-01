@@ -12,6 +12,11 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         unzip \
         gnupg \
         software-properties-common \
+        telnet \
+        iputils-ping \
+        whois \
+        dnsutils \
+        netcat-openbsd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,6 +36,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Tailscale
+RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg \
+        > /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list \
+        > /etc/apt/sources.list.d/tailscale.list \
+    && apt-get update \
+    && apt-get install -y tailscale \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Download and install AWS IAM Roles Anywhere credential helper
 ARG TARGETARCH
 RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "Aarch64" || echo "X86_64") \
@@ -45,3 +60,19 @@ RUN mkdir -p /home/vscode/.aws /home/vscode/.claude \
 # Add clauded alias for bash and zsh
 RUN echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode/.bashrc \
     && echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode/.zshrc
+
+# Set default AWS_REGION (prevents empty host env var from overriding config file)
+RUN echo 'export AWS_REGION="${AWS_REGION:-us-west-2}"' >> /home/vscode/.bashrc \
+    && echo 'export AWS_REGION="${AWS_REGION:-us-west-2}"' >> /home/vscode/.zshrc
+
+# Configure SSH to use SOCKS5 proxy for Tailscale CGNAT IPs (100.64.0.0/10)
+# This is needed because tailscaled runs in userspace networking mode without kernel routes
+RUN mkdir -p /etc/ssh/ssh_config.d \
+    && { \
+        echo "# Route Tailscale CGNAT range (100.64.0.0/10) through SOCKS5 proxy"; \
+        echo "# Required for userspace networking mode (no /dev/net/tun)"; \
+        printf "Host"; \
+        for i in $(seq 64 127); do printf " 100.%d.*" "$i"; done; \
+        echo ""; \
+        echo "    ProxyCommand nc -X 5 -x localhost:1080 %h %p"; \
+    } > /etc/ssh/ssh_config.d/tailscale-cgnat.conf
