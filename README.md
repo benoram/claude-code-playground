@@ -10,6 +10,8 @@ A devcontainer-based development environment with secure AWS access and Terrafor
 
 ## Quick Start
 
+> **Note:** All shell scripts in this repository are committed with executable permissions. If you encounter permission errors, run `chmod +x scripts/*.sh aws-infrastructure/*.sh` to restore execute permissions.
+
 ### 1. Generate Certificates
 ```bash
 cd aws-infrastructure && ./generate-certificates.sh

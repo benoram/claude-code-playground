@@ -336,6 +336,20 @@ cd ..
 2. Check you're operating in the correct AWS region
 3. Verify resource name prefixes match project name
 
+### Script Execution Permission Errors
+
+If you encounter "Permission denied" when running scripts:
+
+```bash
+# Scripts are committed with executable permissions, but may need restoration
+chmod +x scripts/*.sh aws-infrastructure/*.sh
+
+# Verify permissions
+ls -la scripts/
+```
+
+This can happen if files were copied instead of cloned, or if git doesn't preserve permissions on your system.
+
 ### View Credential Setup Logs
 
 ```bash
