@@ -6,6 +6,11 @@ set -e
 
 echo "Setting up AWS credentials..."
 
+# Unset empty AWS region variables (devcontainer may pass empty string from host)
+# Empty env vars override the ~/.aws/config file, causing "Invalid endpoint" errors
+[[ -z "${AWS_REGION}" ]] && unset AWS_REGION
+[[ -z "${AWS_DEFAULT_REGION}" ]] && unset AWS_DEFAULT_REGION
+
 # Determine environment
 if [ -n "${CODESPACES}" ]; then
     echo "Running in GitHub Codespaces"

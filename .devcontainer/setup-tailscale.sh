@@ -14,7 +14,10 @@ echo "Setting up Tailscale..."
 
 # Configuration
 PROJECT_NAME="${PROJECT_NAME:-claude-code-playground}"
-AWS_REGION="${AWS_REGION:-us-west-2}"
+# Handle empty AWS_REGION (devcontainer may set AWS_REGION="" from host, overriding config file)
+if [[ -z "${AWS_REGION}" ]]; then
+    export AWS_REGION="us-west-2"
+fi
 SSM_PARAMETER_NAME="/${PROJECT_NAME}/config/tailscale-auth-key"
 PLACEHOLDER_VALUE="PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT"
 
