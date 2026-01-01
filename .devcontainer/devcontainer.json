@@ -12,7 +12,7 @@
   },
   // Create ~/.aws directory on host if it doesn't exist (required for bind mount)
   "initializeCommand": "mkdir -p ~/.aws",
-  "postStartCommand": ".devcontainer/setup-aws-credentials.sh",
+  "postStartCommand": ".devcontainer/setup-aws-credentials.sh && .devcontainer/setup-tailscale.sh",
   "remoteUser": "vscode",
   "mounts": [
     // Mount host AWS credentials for local development (read-only)

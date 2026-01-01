@@ -93,7 +93,7 @@ check_prerequisites() {
     fi
 
     # Check AWS credentials
-    if ! aws sts get-caller-identity &> /dev/null; then
+    if ! aws sts get-caller-identity --region "${REGION}" &> /dev/null; then
         print_error "AWS credentials not configured or invalid."
         print_error "Please configure AWS credentials before running this script."
         exit 1
@@ -150,16 +150,6 @@ generate_certificates() {
 deploy_stack() {
     print_info "Deploying CloudFormation stack: ${STACK_NAME}"
 
-    # Check if CA certificate exists
-    if [[ ! -f "${CERTS_DIR}/ca-cert.pem" ]]; then
-        print_error "CA certificate not found at: ${CERTS_DIR}/ca-cert.pem"
-        print_error "Please generate certificates first with: ${0##*/} --first-run"
-        exit 1
-    fi
-
-    # Read CA certificate
-    CA_CERT="$(cat "${CERTS_DIR}/ca-cert.pem")"
-
     # Check if stack exists
     STACK_EXISTS=false
     if aws cloudformation describe-stacks \
@@ -171,23 +161,95 @@ deploy_stack() {
         print_info "Stack does not exist, creating..."
     fi
 
-    # Deploy the stack
-    print_info "Starting CloudFormation deployment..."
+    # Build parameters based on whether this is first run or update
+    local PARAMS=()
+    PARAMS+=("ParameterKey=ProjectName,ParameterValue=${PROJECT_NAME}")
+    PARAMS+=("ParameterKey=Environment,ParameterValue=${ENVIRONMENT}")
 
-    if aws cloudformation deploy \
-        --template-file "${TEMPLATE_FILE}" \
+    if [[ "${FIRST_RUN}" == "true" ]] || [[ "${STACK_EXISTS}" == "false" ]]; then
+        # First run or new stack: require CA certificate file
+        if [[ ! -f "${CERTS_DIR}/ca-cert.pem" ]]; then
+            print_error "CA certificate not found at: ${CERTS_DIR}/ca-cert.pem"
+            print_error "Please generate certificates first with: ${0##*/} --first-run"
+            exit 1
+        fi
+        CA_CERT="$(cat "${CERTS_DIR}/ca-cert.pem")"
+        PARAMS+=("ParameterKey=CACertificateBody,ParameterValue=${CA_CERT}")
+        print_info "Using CA certificate from: ${CERTS_DIR}/ca-cert.pem"
+    else
+        # Subsequent run: use previous CA certificate value from stack
+        PARAMS+=("ParameterKey=CACertificateBody,UsePreviousValue=true")
+        print_info "Using existing CA certificate from stack (UsePreviousValue)"
+    fi
+
+    # Deploy using create-change-set and execute-change-set
+    # (avoids the GetTemplateSummary permission requirement of 'aws cloudformation deploy')
+    print_info "Creating CloudFormation change set..."
+
+    local CHANGE_SET_NAME="update-$(date +%s)"
+
+    if ! aws cloudformation create-change-set \
         --stack-name "${STACK_NAME}" \
-        --region "${REGION}" \
+        --change-set-name "${CHANGE_SET_NAME}" \
+        --template-body "file://${TEMPLATE_FILE}" \
+        --parameters "${PARAMS[@]}" \
         --capabilities CAPABILITY_NAMED_IAM \
-        --parameter-overrides \
-            "ProjectName=${PROJECT_NAME}" \
-            "Environment=${ENVIRONMENT}" \
-            "CACertificateBody=${CA_CERT}" \
-        --tags \
-            "Project=${PROJECT_NAME}" \
-            "Environment=${ENVIRONMENT}" \
-            "ManagedBy=CloudFormation" \
-        --no-fail-on-empty-changeset; then
+        --tags "Key=Project,Value=${PROJECT_NAME}" "Key=Environment,Value=${ENVIRONMENT}" "Key=ManagedBy,Value=CloudFormation" \
+        --region "${REGION}" > /dev/null; then
+        print_error "Failed to create change set"
+        exit 1
+    fi
+
+    print_info "Waiting for change set to be ready..."
+    if ! aws cloudformation wait change-set-create-complete \
+        --stack-name "${STACK_NAME}" \
+        --change-set-name "${CHANGE_SET_NAME}" \
+        --region "${REGION}" 2>/dev/null; then
+        # Check if it failed because there are no changes
+        local STATUS
+        STATUS=$(aws cloudformation describe-change-set \
+            --stack-name "${STACK_NAME}" \
+            --change-set-name "${CHANGE_SET_NAME}" \
+            --region "${REGION}" \
+            --query 'Status' --output text 2>/dev/null)
+        local STATUS_REASON
+        STATUS_REASON=$(aws cloudformation describe-change-set \
+            --stack-name "${STACK_NAME}" \
+            --change-set-name "${CHANGE_SET_NAME}" \
+            --region "${REGION}" \
+            --query 'StatusReason' --output text 2>/dev/null)
+
+        if [[ "${STATUS}" == "FAILED" ]] && [[ "${STATUS_REASON}" == *"No changes"* || "${STATUS_REASON}" == *"didn't contain changes"* ]]; then
+            print_info "No changes to deploy"
+            aws cloudformation delete-change-set \
+                --stack-name "${STACK_NAME}" \
+                --change-set-name "${CHANGE_SET_NAME}" \
+                --region "${REGION}" 2>/dev/null || true
+            print_success "Stack is already up to date"
+            return 0
+        else
+            print_error "Change set failed: ${STATUS_REASON}"
+            aws cloudformation delete-change-set \
+                --stack-name "${STACK_NAME}" \
+                --change-set-name "${CHANGE_SET_NAME}" \
+                --region "${REGION}" 2>/dev/null || true
+            exit 1
+        fi
+    fi
+
+    print_info "Executing change set..."
+    if ! aws cloudformation execute-change-set \
+        --stack-name "${STACK_NAME}" \
+        --change-set-name "${CHANGE_SET_NAME}" \
+        --region "${REGION}"; then
+        print_error "Failed to execute change set"
+        exit 1
+    fi
+
+    print_info "Waiting for stack update to complete..."
+    if aws cloudformation wait stack-update-complete \
+        --stack-name "${STACK_NAME}" \
+        --region "${REGION}"; then
         print_success "Stack deployment completed successfully"
     else
         print_error "Stack deployment failed"
@@ -258,7 +320,7 @@ show_next_steps() {
         echo ""
     else
         echo "1. Verify AWS access:"
-        echo "   aws sts get-caller-identity"
+        echo "   aws sts get-caller-identity --region ${REGION}"
         echo ""
         echo "2. Initialize Terraform (if not done):"
         echo "   ./scripts/init-terraform.sh"

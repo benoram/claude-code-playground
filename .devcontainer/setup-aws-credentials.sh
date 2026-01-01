@@ -160,5 +160,16 @@ case "${ENVIRONMENT}" in
         ;;
 esac
 
+# Verify S3 access works (if credentials are configured)
+if aws sts get-caller-identity &> /dev/null; then
+    echo ""
+    echo "Verifying S3 access..."
+    if aws s3 ls --region us-west-2 > /dev/null 2>&1; then
+        echo "S3 access verified successfully!"
+    else
+        echo "WARNING: S3 access check failed. Check your IAM permissions."
+    fi
+fi
+
 echo ""
 echo "AWS credential setup complete."
