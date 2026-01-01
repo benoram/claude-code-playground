@@ -17,7 +17,7 @@ cd aws-infrastructure && ./generate-certificates.sh
 
 ### 2. Deploy Bootstrap Infrastructure
 ```bash
-./scripts/deploy-bootstrap.sh --first-run --region us-east-1
+./scripts/deploy-bootstrap.sh --first-run --region us-west-2
 ```
 
 ### 3. Configure Codespaces Secrets

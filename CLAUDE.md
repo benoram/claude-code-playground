@@ -17,7 +17,7 @@ This is a devcontainer-based development environment for Claude Code with:
 cd aws-infrastructure && ./generate-certificates.sh && cd ..
 
 # Deploy bootstrap stack (requires admin credentials)
-./scripts/deploy-bootstrap.sh --first-run --region us-east-1
+./scripts/deploy-bootstrap.sh --first-run --region us-west-2
 ```
 
 ### Initialize Terraform

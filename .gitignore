@@ -550,3 +550,8 @@ aws-infrastructure/certificates/
 
 # Except keep the certificate generation script
 !aws-infrastructure/generate-certificates.sh
+
+### Local Environment Files ###
+# Local Roles Anywhere configuration (contains secrets)
+.env.local
+.env.*.local

@@ -56,7 +56,7 @@ setup_roles_anywhere() {
     chmod 644 /home/vscode/.aws/roles-anywhere/certificate.pem
 
     # Determine region from ARN or use default
-    AWS_REGION="${AWS_REGION:-us-east-1}"
+    AWS_REGION="${AWS_REGION:-us-west-2}"
     if [ -n "${ROLES_ANYWHERE_TRUST_ANCHOR_ARN}" ]; then
         EXTRACTED_REGION=$(echo "${ROLES_ANYWHERE_TRUST_ANCHOR_ARN}" | cut -d: -f4)
         if [ -n "${EXTRACTED_REGION}" ]; then

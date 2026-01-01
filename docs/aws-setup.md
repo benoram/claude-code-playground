@@ -54,7 +54,7 @@ This creates certificates in `aws-infrastructure/certificates/`:
 For the **first deployment**, use admin credentials:
 
 ```bash
-./scripts/deploy-bootstrap.sh --first-run --region us-east-1
+./scripts/deploy-bootstrap.sh --first-run --region us-west-2
 ```
 
 This creates:
@@ -145,7 +145,7 @@ Deploy or update the bootstrap CloudFormation stack.
 # Options
 ./scripts/deploy-bootstrap.sh --help
   --first-run         First deployment
-  --region REGION     AWS region (default: us-east-1)
+  --region REGION     AWS region (default: us-west-2)
   --project-name NAME Project name (default: claude-code-playground)
   --environment ENV   dev/staging/prod (default: dev)
 ```
@@ -212,7 +212,7 @@ chmod +x /usr/local/bin/aws_signing_helper
 Configure `~/.aws/config`:
 ```ini
 [profile devcontainer]
-region = us-east-1
+region = us-west-2
 credential_process = aws_signing_helper credential-process \
   --certificate /path/to/client-cert.pem \
   --private-key /path/to/client-key.pem \

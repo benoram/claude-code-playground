@@ -12,7 +12,7 @@
 #
 # Options:
 #   --first-run     First deployment (requires CA certificate generation)
-#   --region        AWS region (default: us-east-1)
+#   --region        AWS region (default: us-west-2)
 #   --project-name  Project name override (default: claude-code-playground)
 #   --environment   Environment (dev/staging/prod, default: dev)
 #   --help          Show this help message
@@ -36,7 +36,7 @@ CERTS_DIR="${AWS_INFRA_DIR}/certificates"
 
 # Default values
 STACK_NAME="claude-code-bootstrap"
-REGION="${AWS_REGION:-us-east-1}"
+REGION="${AWS_REGION:-us-west-2}"
 PROJECT_NAME="claude-code-playground"
 ENVIRONMENT="dev"
 FIRST_RUN=false

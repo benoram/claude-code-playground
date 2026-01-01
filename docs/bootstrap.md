@@ -35,7 +35,7 @@ This creates the following files in `aws-infrastructure/certificates/`:
 cd /workspaces/claude-code-playground
 
 # Deploy with admin credentials
-./scripts/deploy-bootstrap.sh --first-run --region us-east-1
+./scripts/deploy-bootstrap.sh --first-run --region us-west-2
 ```
 
 Or manually:
@@ -44,7 +44,7 @@ Or manually:
 aws cloudformation deploy \
   --template-file aws-infrastructure/bootstrap.template \
   --stack-name claude-code-bootstrap \
-  --region us-east-1 \
+  --region us-west-2 \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     CACertificateBody="$(cat aws-infrastructure/certificates/ca-cert.pem)"
@@ -55,7 +55,7 @@ aws cloudformation deploy \
 ```bash
 aws cloudformation describe-stacks \
   --stack-name claude-code-bootstrap \
-  --region us-east-1 \
+  --region us-west-2 \
   --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
   --output table
 ```
@@ -118,55 +118,144 @@ export AWS_PROFILE_LOCAL=your-profile
 # Then open in devcontainer
 ```
 
-### Option B: Use IAM Roles Anywhere
+### Option B: Use IAM Roles Anywhere with Environment Variables
 
-Set environment variables before starting the devcontainer:
+This method passes the Roles Anywhere configuration to the devcontainer via environment variables.
+
+#### Step 1: Get Stack Outputs
+
+After deploying the bootstrap stack, retrieve the ARN values:
 
 ```bash
-# Export these before opening VS Code
-export ROLES_ANYWHERE_CERTIFICATE=$(cat aws-infrastructure/certificates/client-cert-base64.txt)
-export ROLES_ANYWHERE_PRIVATE_KEY=$(cat aws-infrastructure/certificates/client-key-base64.txt)
-export ROLES_ANYWHERE_TRUST_ANCHOR_ARN="arn:aws:rolesanywhere:REGION:ACCOUNT:trust-anchor/ID"
-export ROLES_ANYWHERE_PROFILE_ARN="arn:aws:rolesanywhere:REGION:ACCOUNT:profile/ID"
-export ROLES_ANYWHERE_ROLE_ARN="arn:aws:iam::ACCOUNT:role/claude-code-playground-devcontainer-role"
+aws cloudformation describe-stacks \
+  --stack-name claude-code-bootstrap \
+  --region us-west-2 \
+  --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+  --output table
+```
 
-# Then open in devcontainer
+Note these values:
+- `RolesAnywhereTrustAnchorArn`
+- `RolesAnywhereProfileArn`
+- `DevcontainerRoleArn`
+
+#### Step 2: Create Local Environment File
+
+Create a `.env.local` file in the repository root (this file is gitignored):
+
+```bash
+# .env.local - Local Roles Anywhere configuration
+ROLES_ANYWHERE_CERTIFICATE=<base64-encoded-certificate>
+ROLES_ANYWHERE_PRIVATE_KEY=<base64-encoded-private-key>
+ROLES_ANYWHERE_TRUST_ANCHOR_ARN=arn:aws:rolesanywhere:us-west-2:ACCOUNT:trust-anchor/TRUST_ANCHOR_ID
+ROLES_ANYWHERE_PROFILE_ARN=arn:aws:rolesanywhere:us-west-2:ACCOUNT:profile/PROFILE_ID
+ROLES_ANYWHERE_ROLE_ARN=arn:aws:iam::ACCOUNT:role/claude-code-playground-devcontainer-role
+```
+
+To get the base64-encoded values:
+```bash
+cat aws-infrastructure/certificates/client-cert-base64.txt
+cat aws-infrastructure/certificates/client-key-base64.txt
+```
+
+#### Step 3: Configure devcontainer to Use Environment File
+
+Update `.devcontainer/devcontainer.json` to load the environment file:
+
+```json
+{
+  "runArgs": ["--env-file", "${localWorkspaceFolder}/.env.local"]
+}
+```
+
+Or export variables in your shell before opening VS Code:
+
+```bash
+# Source the environment file
+set -a
+source .env.local
+set +a
+
+# Open VS Code
 code .
+```
+
+#### Step 4: Verify
+
+After the devcontainer starts:
+```bash
+aws sts get-caller-identity
 ```
 
 ### Option C: Configure Signing Helper on Host
 
-Install the AWS Signing Helper:
+This method configures the AWS signing helper directly on your host machine, which then shares credentials with the devcontainer.
+
+#### Step 1: Install AWS Signing Helper
 
 ```bash
 # Linux x86_64
-curl -L -o /usr/local/bin/aws_signing_helper \
+sudo curl -L -o /usr/local/bin/aws_signing_helper \
   "https://rolesanywhere.amazonaws.com/releases/1.7.2/X86_64/Linux/Amzn2023/aws_signing_helper"
-chmod +x /usr/local/bin/aws_signing_helper
+sudo chmod +x /usr/local/bin/aws_signing_helper
 
-# macOS (Intel)
-curl -L -o /usr/local/bin/aws_signing_helper \
+# Linux ARM64
+sudo curl -L -o /usr/local/bin/aws_signing_helper \
+  "https://rolesanywhere.amazonaws.com/releases/1.7.2/Aarch64/Linux/Amzn2023/aws_signing_helper"
+sudo chmod +x /usr/local/bin/aws_signing_helper
+
+# macOS Intel
+sudo curl -L -o /usr/local/bin/aws_signing_helper \
   "https://rolesanywhere.amazonaws.com/releases/1.7.2/X86_64/Darwin/aws_signing_helper"
-chmod +x /usr/local/bin/aws_signing_helper
+sudo chmod +x /usr/local/bin/aws_signing_helper
+
+# macOS Apple Silicon
+sudo curl -L -o /usr/local/bin/aws_signing_helper \
+  "https://rolesanywhere.amazonaws.com/releases/1.7.2/Aarch64/Darwin/aws_signing_helper"
+sudo chmod +x /usr/local/bin/aws_signing_helper
 ```
 
-Configure `~/.aws/config`:
+#### Step 2: Configure AWS Profile
+
+Add to `~/.aws/config`:
 
 ```ini
 [profile claude-playground]
-region = us-east-1
-credential_process = aws_signing_helper credential-process \
-  --certificate /path/to/aws-infrastructure/certificates/client-cert.pem \
-  --private-key /path/to/aws-infrastructure/certificates/client-key.pem \
-  --trust-anchor-arn arn:aws:rolesanywhere:REGION:ACCOUNT:trust-anchor/ID \
-  --profile-arn arn:aws:rolesanywhere:REGION:ACCOUNT:profile/ID \
+region = us-west-2
+credential_process = /usr/local/bin/aws_signing_helper credential-process \
+  --certificate /full/path/to/aws-infrastructure/certificates/client-cert.pem \
+  --private-key /full/path/to/aws-infrastructure/certificates/client-key.pem \
+  --trust-anchor-arn arn:aws:rolesanywhere:us-west-2:ACCOUNT:trust-anchor/TRUST_ANCHOR_ID \
+  --profile-arn arn:aws:rolesanywhere:us-west-2:ACCOUNT:profile/PROFILE_ID \
   --role-arn arn:aws:iam::ACCOUNT:role/claude-code-playground-devcontainer-role
 ```
 
-Then:
+**Important:** Use absolute paths for certificate files.
+
+#### Step 3: Test on Host
+
 ```bash
 export AWS_PROFILE=claude-playground
 aws sts get-caller-identity
+```
+
+#### Step 4: Use in Devcontainer
+
+The devcontainer mounts `~/.aws` from your host. Set the profile before opening:
+
+```bash
+export AWS_PROFILE_LOCAL=claude-playground
+code .
+```
+
+Or add to `.devcontainer/devcontainer.json`:
+
+```json
+{
+  "containerEnv": {
+    "AWS_PROFILE": "claude-playground"
+  }
+}
 ```
 
 ---
