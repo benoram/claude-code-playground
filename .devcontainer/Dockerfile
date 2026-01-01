@@ -16,6 +16,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         iputils-ping \
         whois \
         dnsutils \
+        netcat-openbsd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -63,3 +64,15 @@ RUN echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode
 # Set default AWS_REGION (prevents empty host env var from overriding config file)
 RUN echo 'export AWS_REGION="${AWS_REGION:-us-west-2}"' >> /home/vscode/.bashrc \
     && echo 'export AWS_REGION="${AWS_REGION:-us-west-2}"' >> /home/vscode/.zshrc
+
+# Configure SSH to use SOCKS5 proxy for Tailscale CGNAT IPs (100.64.0.0/10)
+# This is needed because tailscaled runs in userspace networking mode without kernel routes
+RUN mkdir -p /etc/ssh/ssh_config.d \
+    && { \
+        echo "# Route Tailscale CGNAT range (100.64.0.0/10) through SOCKS5 proxy"; \
+        echo "# Required for userspace networking mode (no /dev/net/tun)"; \
+        printf "Host"; \
+        for i in $(seq 64 127); do printf " 100.%d.*" "$i"; done; \
+        echo ""; \
+        echo "    ProxyCommand nc -X 5 -x localhost:1080 %h %p"; \
+    } > /etc/ssh/ssh_config.d/tailscale-cgnat.conf
