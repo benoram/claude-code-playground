@@ -59,3 +59,7 @@ RUN mkdir -p /home/vscode/.aws /home/vscode/.claude \
 # Add clauded alias for bash and zsh
 RUN echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode/.bashrc \
     && echo "alias clauded='claude --dangerously-skip-permissions'" >> /home/vscode/.zshrc
+
+# Set default AWS_REGION (prevents empty host env var from overriding config file)
+RUN echo 'export AWS_REGION="${AWS_REGION:-us-west-2}"' >> /home/vscode/.bashrc \
+    && echo 'export AWS_REGION="${AWS_REGION:-us-west-2}"' >> /home/vscode/.zshrc
