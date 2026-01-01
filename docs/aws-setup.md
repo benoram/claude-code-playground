@@ -352,7 +352,8 @@ terraform force-unlock LOCK_ID
 All scripts are committed with executable permissions. If you encounter this error:
 
 ```bash
-chmod +x scripts/*.sh aws-infrastructure/*.sh
+chmod +x scripts/deploy-bootstrap.sh scripts/init-terraform.sh
+chmod +x aws-infrastructure/generate-certificates.sh
 ```
 
 This typically occurs if files were copied instead of cloned, or if git doesn't preserve executable permissions on your system.

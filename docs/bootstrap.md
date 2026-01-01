@@ -342,7 +342,8 @@ If you encounter "Permission denied" when running scripts:
 
 ```bash
 # Scripts are committed with executable permissions, but may need restoration
-chmod +x scripts/*.sh aws-infrastructure/*.sh
+chmod +x scripts/deploy-bootstrap.sh scripts/init-terraform.sh
+chmod +x aws-infrastructure/generate-certificates.sh
 
 # Verify permissions
 ls -la scripts/
