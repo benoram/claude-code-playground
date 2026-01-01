@@ -12,7 +12,8 @@ A devcontainer-based development environment with secure AWS access and Terrafor
 
 > **Note:** All shell scripts in this repository are committed with executable permissions. If you encounter permission errors, run:
 > ```bash
-> chmod +x scripts/deploy-bootstrap.sh scripts/init-terraform.sh aws-infrastructure/generate-certificates.sh
+> chmod +x scripts/deploy-bootstrap.sh scripts/init-terraform.sh
+> chmod +x aws-infrastructure/generate-certificates.sh
 > ```
 
 ### 1. Generate Certificates
