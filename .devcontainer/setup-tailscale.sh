@@ -78,7 +78,8 @@ else
     # Using --tun=userspace-networking to work without /dev/net/tun
     # Using --socks5-server=:1080 to enable SOCKS5 proxy for subnet route access
     #   (userspace networking doesn't support kernel routes, so use: curl -x socks5://localhost:1080)
-    sudo tailscaled --state=mem: --tun=userspace-networking --socks5-server=:1080 --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &
+    # Using setsid to start in a new session so the daemon survives after postStartCommand exits
+    sudo setsid tailscaled --state=mem: --tun=userspace-networking --socks5-server=:1080 --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &
 
     # Wait for daemon to start (tailscale status returns 1 when logged out, but that's OK)
     max_attempts=30
