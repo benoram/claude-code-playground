@@ -31,5 +31,7 @@
         "amazonwebservices.aws-toolkit-vscode"
       ]
     }
-  }
+  },
+  // Claude Code Pro: Run 'claude login' after container starts to authenticate via OAuth
+  "postCreateCommand": "echo '\n📋 Claude Code installed! Run: claude login\n'"
 }
