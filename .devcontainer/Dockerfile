@@ -12,6 +12,10 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         unzip \
         gnupg \
         software-properties-common \
+        telnet \
+        iputils-ping \
+        whois \
+        dnsutils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

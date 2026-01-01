@@ -76,7 +76,9 @@ else
     # Start tailscaled in userspace networking mode (works in containers without TUN device)
     # Using --state=mem: to avoid needing persistent state file
     # Using --tun=userspace-networking to work without /dev/net/tun
-    sudo tailscaled --state=mem: --tun=userspace-networking --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &
+    # Using --socks5-server=:1080 to enable SOCKS5 proxy for subnet route access
+    #   (userspace networking doesn't support kernel routes, so use: curl -x socks5://localhost:1080)
+    sudo tailscaled --state=mem: --tun=userspace-networking --socks5-server=:1080 --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &
 
     # Wait for daemon to start (tailscale status returns 1 when logged out, but that's OK)
     max_attempts=30
@@ -111,7 +113,8 @@ if tailscale status 2>/dev/null | grep -q "offers exit node"; then
     echo "[INFO] Already connected to Tailscale"
 else
     # Connect using auth key (ephemeral behavior is set when generating the key)
-    if sudo tailscale up --authkey="${TAILSCALE_AUTH_KEY}"; then
+    # --accept-routes enables access to subnet routes advertised by other nodes
+    if sudo tailscale up --authkey="${TAILSCALE_AUTH_KEY}" --accept-routes; then
         echo "[SUCCESS] Connected to Tailscale network"
     else
         echo "[ERROR] Failed to connect to Tailscale network"
@@ -137,3 +140,7 @@ fi
 
 echo ""
 echo "Tailscale setup complete."
+echo ""
+echo "[INFO] To access subnet routes (e.g., 10.x.x.x), use the SOCKS5 proxy:"
+echo "[INFO]   curl -x socks5://localhost:1080 http://10.16.32.1"
+echo "[INFO]   Note: ICMP ping does not work in userspace networking mode"
